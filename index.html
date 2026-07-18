@@ -162,6 +162,11 @@
     border: none; background: var(--accent); color: #fff; border-radius: 10px;
     padding: 12px 0; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 4px;
   }
+  #galaxyCheckRow {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink);
+    padding: 2px 2px;
+  }
+  #galaxyCheckRow input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
   #moveSection { display: none; flex-direction: column; gap: 8px; }
   #moveSection.show { display: flex; }
   #moveDivider { border-top: 1px solid var(--line); margin-top: 4px; }
@@ -244,6 +249,10 @@
     </div>
     <input id="siteUrlInput" placeholder="URL（例: example.com）" />
     <input id="siteTitleInput" placeholder="表示名（空欄ならサイト名を自動取得）" />
+    <label id="galaxyCheckRow">
+      <input type="checkbox" id="siteGalaxyCheck" />
+      <span>GALAXYブラウザで開く</span>
+    </label>
     <button id="modalSubmit">追加する</button>
     <div id="moveSection">
       <div id="moveDivider"></div>
@@ -299,6 +308,16 @@
 
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(categories)); } catch (e) {}
+  }
+
+  function toIntentUrl(url) {
+    try {
+      const u = new URL(url);
+      const scheme = u.protocol.replace(":", "");
+      const rest = u.host + u.pathname + u.search + u.hash;
+      return "intent://" + rest + "#Intent;scheme=" + scheme +
+        ";package=com.sec.android.app.sbrowser;S.browser_fallback_url=" + encodeURIComponent(url) + ";end";
+    } catch { return url; }
   }
 
   function faviconFor(url) {
@@ -470,7 +489,7 @@
     render();
   }
 
-  function addSite(url, title) {
+  function addSite(url, title, galaxy) {
     url = (url || "").trim();
     title = (title || "").trim();
     if (!url) return;
@@ -480,13 +499,13 @@
     }
     const cat = getActive();
     if (!cat) return;
-    cat.sites.push({ id: "s_" + Date.now(), title, url });
+    cat.sites.push({ id: "s_" + Date.now(), title, url, galaxy: !!galaxy });
     save();
     closeModal();
     render();
   }
 
-  function updateSite(siteId, url, title) {
+  function updateSite(siteId, url, title, galaxy) {
     url = (url || "").trim();
     title = (title || "").trim();
     if (!url) return;
@@ -500,6 +519,7 @@
     if (!s) return;
     s.url = url;
     s.title = title;
+    s.galaxy = !!galaxy;
     save();
     closeModal();
     render();
@@ -526,7 +546,7 @@
     if (!s) return;
     const target = categories.find(c => c.id === targetCatId);
     if (!target) return;
-    target.sites.push({ id: "s_" + Date.now(), title: s.title, url: s.url });
+    target.sites.push({ id: "s_" + Date.now(), title: s.title, url: s.url, galaxy: !!s.galaxy });
     save();
     closeModal();
     render();
@@ -535,8 +555,9 @@
   function submitSite() {
     const url = document.getElementById("siteUrlInput").value;
     const title = document.getElementById("siteTitleInput").value;
-    if (editingSiteId) updateSite(editingSiteId, url, title);
-    else addSite(url, title);
+    const galaxy = document.getElementById("siteGalaxyCheck").checked;
+    if (editingSiteId) updateSite(editingSiteId, url, title, galaxy);
+    else addSite(url, title, galaxy);
   }
 
   function renderGrid() {
@@ -551,7 +572,7 @@
     sites.forEach((s, i) => {
       const card = document.createElement("a");
       card.className = "card";
-      card.href = s.url;
+      card.href = s.galaxy ? toIntentUrl(s.url) : s.url;
       card.target = "_blank";
       card.rel = "noreferrer";
       card.addEventListener("click", (e) => { if (reorderMode) e.preventDefault(); });
@@ -629,6 +650,7 @@
       document.getElementById("modalTitle").textContent = "サイトを編集";
       document.getElementById("siteUrlInput").value = site.url;
       document.getElementById("siteTitleInput").value = site.title;
+      document.getElementById("siteGalaxyCheck").checked = !!site.galaxy;
       document.getElementById("modalSubmit").textContent = "保存する";
 
       const select = document.getElementById("moveTargetSelect");
@@ -651,6 +673,7 @@
       document.getElementById("modalTitle").textContent = (cat?.name || "") + " にサイトを追加";
       document.getElementById("siteUrlInput").value = "";
       document.getElementById("siteTitleInput").value = "";
+      document.getElementById("siteGalaxyCheck").checked = false;
       document.getElementById("modalSubmit").textContent = "追加する";
       moveSection.classList.remove("show");
     }
