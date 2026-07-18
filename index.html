@@ -105,9 +105,8 @@
   }
   #reorderBtn {
     border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 12px;
-    height: 42px; flex-shrink: 0; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; gap: 4px;
-    padding: 0 12px; font-size: 13px; font-weight: 700; white-space: nowrap;
+    width: 42px; height: 42px; flex-shrink: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
   }
   #reorderBtn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
   .card-move { display: flex; gap: 2px; flex-shrink: 0; }
@@ -163,6 +162,57 @@
     border: none; background: var(--accent); color: #fff; border-radius: 10px;
     padding: 12px 0; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 4px;
   }
+  #moveSection { display: none; flex-direction: column; gap: 8px; }
+  #moveSection.show { display: flex; }
+  #moveDivider { border-top: 1px solid var(--line); margin-top: 4px; }
+  #moveLabel { font-size: 12px; color: var(--muted); font-weight: 600; }
+  #moveTargetSelect {
+    font-size: 14px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); outline: none;
+    background: #fff; color: var(--ink);
+  }
+  #moveBtnRow { display: flex; gap: 8px; }
+  #moveBtnRow button {
+    flex: 1; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 10px;
+    padding: 11px 0; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  #moveBtnRow button:disabled { opacity: 0.4; cursor: default; }
+
+  /* group menu button */
+  #groupMenuBtn {
+    border: none; background: none; cursor: pointer; color: var(--muted);
+    padding: 8px 10px 12px 6px; display: flex; align-items: center; flex-shrink: 0;
+  }
+
+  /* group manage modal */
+  #groupModalOverlay {
+    position: fixed; inset: 0; background: rgba(46,42,36,0.35);
+    display: none; align-items: flex-end; z-index: 20;
+  }
+  #groupModalOverlay.open { display: flex; }
+  #groupModalSheet {
+    background: #fff; width: 100%; border-radius: 18px 18px 0 0;
+    padding: 20px 18px 26px 18px; display: flex; flex-direction: column; gap: 12px;
+    max-height: 78vh; overflow-y: auto;
+  }
+  #groupModalHeader { display: flex; align-items: center; justify-content: space-between; }
+  #groupModalHeader span { font-size: 15px; font-weight: 700; }
+  #groupModalHeader button { border: none; background: none; color: var(--muted); cursor: pointer; }
+  .group-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 4px; border-bottom: 1px solid var(--line);
+  }
+  .group-row:last-child { border-bottom: none; }
+  .group-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .group-name {
+    flex: 1; font-size: 14px; font-weight: 600; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .group-actions { display: flex; gap: 2px; flex-shrink: 0; }
+  .group-actions button {
+    border: none; background: none; color: var(--muted-light); cursor: pointer; padding: 4px;
+    display: flex; align-items: center;
+  }
+  .group-actions button:disabled { opacity: 0.25; cursor: default; }
   svg { display: block; }
 </style>
 </head>
@@ -178,9 +228,8 @@
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     <span>追加</span>
   </button>
-  <button id="reorderBtn">
+  <button id="reorderBtn" title="並び替え">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>
-    <span>並び替え</span>
   </button>
 </div>
 <div id="grid"></div>
@@ -196,6 +245,27 @@
     <input id="siteUrlInput" placeholder="URL（例: example.com）" />
     <input id="siteTitleInput" placeholder="表示名（空欄ならサイト名を自動取得）" />
     <button id="modalSubmit">追加する</button>
+    <div id="moveSection">
+      <div id="moveDivider"></div>
+      <span id="moveLabel">別のグループへ</span>
+      <select id="moveTargetSelect"></select>
+      <div id="moveBtnRow">
+        <button id="moveBtn">移動する</button>
+        <button id="copyBtn">コピーする</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="groupModalOverlay">
+  <div id="groupModalSheet">
+    <div id="groupModalHeader">
+      <span>グループ管理</span>
+      <button id="groupModalClose">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="groupList"></div>
   </div>
 </div>
 
@@ -318,6 +388,13 @@
     addForm.querySelector("#newCatSubmit")?.addEventListener("click", () => {
       addCategory(document.getElementById("newCatInput").value);
     });
+
+    const menuBtn = document.createElement("button");
+    menuBtn.id = "groupMenuBtn";
+    menuBtn.title = "グループ管理";
+    menuBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+    menuBtn.onclick = () => openGroupModal();
+    bar.appendChild(menuBtn);
   }
 
   function addCategory(name) {
@@ -336,6 +413,29 @@
     if (activeId === id) activeId = categories[0]?.id || null;
     save();
     render();
+  }
+
+  function moveCategory(id, dir) {
+    const idx = categories.findIndex(c => c.id === id);
+    if (idx < 0) return;
+    const target = idx + dir;
+    if (target < 0 || target >= categories.length) return;
+    [categories[idx], categories[target]] = [categories[target], categories[idx]];
+    save();
+    renderGroupList();
+    renderTabs();
+  }
+
+  function duplicateCategory(id) {
+    const cat = categories.find(c => c.id === id);
+    if (!cat) return;
+    const newId = "cat_" + Date.now();
+    const newSites = cat.sites.map((s, i) => ({ id: "s_" + Date.now() + "_" + i, title: s.title, url: s.url }));
+    const color = ACCENTS[categories.length % ACCENTS.length];
+    categories.push({ id: newId, name: cat.name + "のコピー", color, sites: newSites });
+    save();
+    renderGroupList();
+    renderTabs();
   }
 
   function renameCategory(id, name) {
@@ -400,6 +500,33 @@
     if (!s) return;
     s.url = url;
     s.title = title;
+    save();
+    closeModal();
+    render();
+  }
+
+  function moveSiteToGroup(siteId, targetCatId) {
+    const cat = getActive();
+    if (!cat) return;
+    const idx = cat.sites.findIndex(s => s.id === siteId);
+    if (idx < 0) return;
+    const target = categories.find(c => c.id === targetCatId);
+    if (!target) return;
+    const [s] = cat.sites.splice(idx, 1);
+    target.sites.push(s);
+    save();
+    closeModal();
+    render();
+  }
+
+  function copySiteToGroup(siteId, targetCatId) {
+    const cat = getActive();
+    if (!cat) return;
+    const s = cat.sites.find(s => s.id === siteId);
+    if (!s) return;
+    const target = categories.find(c => c.id === targetCatId);
+    if (!target) return;
+    target.sites.push({ id: "s_" + Date.now(), title: s.title, url: s.url });
     save();
     closeModal();
     render();
@@ -496,18 +623,36 @@
 
   function openModal(site) {
     const cat = getActive();
+    const moveSection = document.getElementById("moveSection");
     if (site) {
       editingSiteId = site.id;
       document.getElementById("modalTitle").textContent = "サイトを編集";
       document.getElementById("siteUrlInput").value = site.url;
       document.getElementById("siteTitleInput").value = site.title;
       document.getElementById("modalSubmit").textContent = "保存する";
+
+      const select = document.getElementById("moveTargetSelect");
+      select.innerHTML = "";
+      const others = categories.filter(c => c.id !== cat?.id);
+      others.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name;
+        select.appendChild(opt);
+      });
+      const hasOthers = others.length > 0;
+      document.getElementById("moveBtn").disabled = !hasOthers;
+      document.getElementById("copyBtn").disabled = !hasOthers;
+      select.disabled = !hasOthers;
+      document.getElementById("moveLabel").textContent = hasOthers ? "別のグループへ" : "他のグループがまだないで";
+      moveSection.classList.add("show");
     } else {
       editingSiteId = null;
       document.getElementById("modalTitle").textContent = (cat?.name || "") + " にサイトを追加";
       document.getElementById("siteUrlInput").value = "";
       document.getElementById("siteTitleInput").value = "";
       document.getElementById("modalSubmit").textContent = "追加する";
+      moveSection.classList.remove("show");
     }
     document.getElementById("modalOverlay").classList.add("open");
     setTimeout(() => document.getElementById("siteUrlInput").focus(), 0);
@@ -526,13 +671,26 @@
     reorderMode = !reorderMode;
     const btn = document.getElementById("reorderBtn");
     btn.classList.toggle("active", reorderMode);
-    btn.querySelector("span").textContent = reorderMode ? "完了" : "並び替え";
+    btn.title = reorderMode ? "完了" : "並び替え";
+    btn.innerHTML = reorderMode
+      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>';
     query = "";
     document.getElementById("searchInput").value = "";
     document.getElementById("searchInput").disabled = reorderMode;
     renderGrid();
   });
   document.getElementById("modalSubmit").addEventListener("click", submitSite);
+  document.getElementById("moveBtn").addEventListener("click", () => {
+    if (!editingSiteId) return;
+    const targetId = document.getElementById("moveTargetSelect").value;
+    if (targetId) moveSiteToGroup(editingSiteId, targetId);
+  });
+  document.getElementById("copyBtn").addEventListener("click", () => {
+    if (!editingSiteId) return;
+    const targetId = document.getElementById("moveTargetSelect").value;
+    if (targetId) copySiteToGroup(editingSiteId, targetId);
+  });
   document.getElementById("siteTitleInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") submitSite();
   });
@@ -540,6 +698,62 @@
     query = e.target.value;
     renderGrid();
   });
+
+  function renderGroupList() {
+    const list = document.getElementById("groupList");
+    list.innerHTML = "";
+    categories.forEach((c, i) => {
+      const row = document.createElement("div");
+      row.className = "group-row";
+
+      const dot = document.createElement("div");
+      dot.className = "group-dot";
+      dot.style.background = c.color;
+      row.appendChild(dot);
+
+      const name = document.createElement("span");
+      name.className = "group-name";
+      name.textContent = c.name;
+      row.appendChild(name);
+
+      const actions = document.createElement("div");
+      actions.className = "group-actions";
+
+      const up = document.createElement("button");
+      up.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>';
+      up.disabled = i === 0;
+      up.onclick = () => moveCategory(c.id, -1);
+      actions.appendChild(up);
+
+      const down = document.createElement("button");
+      down.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
+      down.disabled = i === categories.length - 1;
+      down.onclick = () => moveCategory(c.id, 1);
+      actions.appendChild(down);
+
+      const dup = document.createElement("button");
+      dup.title = "複製";
+      dup.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      dup.onclick = () => duplicateCategory(c.id);
+      actions.appendChild(dup);
+
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+  }
+
+  function openGroupModal() {
+    renderGroupList();
+    document.getElementById("groupModalOverlay").classList.add("open");
+  }
+  function closeGroupModal() {
+    document.getElementById("groupModalOverlay").classList.remove("open");
+  }
+
+  document.getElementById("groupModalOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "groupModalOverlay") closeGroupModal();
+  });
+  document.getElementById("groupModalClose").addEventListener("click", closeGroupModal);
 
   function render() {
     renderTabs();
