@@ -131,6 +131,9 @@
     display: flex; align-items: center; justify-content: center; overflow: hidden;
   }
   .card-thumb img { width: 32px; height: 32px; opacity: 0.85; }
+  .card-thumb.has-photo img {
+    width: 100%; height: 100%; object-fit: cover; opacity: 1;
+  }
   .card-row {
     display: flex; align-items: center; justify-content: space-between; gap: 4px;
   }
@@ -327,6 +330,43 @@
     } catch { return null; }
   }
 
+  // ---- OGP画像（ページのサムネイル）まわり ----
+  const OGP_ENDPOINT = "/api/ogp";
+  const OGP_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30日
+
+  function findSiteById(siteId) {
+    for (const c of categories) {
+      const s = c.sites.find(x => x.id === siteId);
+      if (s) return s;
+    }
+    return null;
+  }
+
+  function isThumbStale(site) {
+    if (!site.thumb) return true;
+    if (!site.thumbAt) return true;
+    return (Date.now() - site.thumbAt) > OGP_MAX_AGE_MS;
+  }
+
+  // 裏でOGP画像を取りに行って、取れたら保存＋再描画する（失敗しても無視、faviconのまま）
+  async function refreshThumb(siteId) {
+    const site = findSiteById(siteId);
+    if (!site) return;
+    try {
+      const res = await fetch(OGP_ENDPOINT + "?url=" + encodeURIComponent(site.url));
+      if (!res.ok) return;
+      const data = await res.json();
+      const current = findSiteById(siteId);
+      if (!current) return;
+      current.thumbAt = Date.now();
+      if (data.image) current.thumb = data.image;
+      save();
+      renderGrid();
+    } catch (e) {
+      // 通信失敗時は何もしない（次回また試す）
+    }
+  }
+
   function esc(str) {
     const d = document.createElement("div");
     d.textContent = str;
@@ -499,10 +539,12 @@
     }
     const cat = getActive();
     if (!cat) return;
-    cat.sites.push({ id: "s_" + Date.now(), title, url, galaxy: !!galaxy });
+    const newId = "s_" + Date.now();
+    cat.sites.push({ id: newId, title, url, galaxy: !!galaxy });
     save();
     closeModal();
     render();
+    refreshThumb(newId);
   }
 
   function updateSite(siteId, url, title, galaxy) {
@@ -517,12 +559,18 @@
     if (!cat) return;
     const s = cat.sites.find(s => s.id === siteId);
     if (!s) return;
+    const urlChanged = s.url !== url;
     s.url = url;
     s.title = title;
     s.galaxy = !!galaxy;
+    if (urlChanged) {
+      s.thumb = null;
+      s.thumbAt = null;
+    }
     save();
     closeModal();
     render();
+    if (urlChanged) refreshThumb(siteId);
   }
 
   function moveSiteToGroup(siteId, targetCatId) {
@@ -546,7 +594,7 @@
     if (!s) return;
     const target = categories.find(c => c.id === targetCatId);
     if (!target) return;
-    target.sites.push({ id: "s_" + Date.now(), title: s.title, url: s.url, galaxy: !!s.galaxy });
+    target.sites.push({ id: "s_" + Date.now(), title: s.title, url: s.url, galaxy: !!s.galaxy, thumb: s.thumb || null, thumbAt: s.thumbAt || null });
     save();
     closeModal();
     render();
@@ -580,16 +628,38 @@
       const thumb = document.createElement("div");
       thumb.className = "card-thumb";
       thumb.style.border = "1.5px dashed " + (cat?.color || "#DCD4C6") + "55";
-      const fav = faviconFor(s.url);
-      if (fav) {
+      if (s.thumb) {
+        thumb.classList.add("has-photo");
         const img = document.createElement("img");
-        img.src = fav;
-        img.onerror = () => { img.style.display = "none"; };
+        img.src = s.thumb;
+        img.onerror = () => {
+          // OGP画像が読めなくなってたらfaviconに戻す
+          thumb.classList.remove("has-photo");
+          thumb.innerHTML = "";
+          const fav = faviconFor(s.url);
+          if (fav) {
+            const favImg = document.createElement("img");
+            favImg.src = fav;
+            favImg.onerror = () => { favImg.style.display = "none"; };
+            thumb.appendChild(favImg);
+          }
+        };
         thumb.appendChild(img);
       } else {
-        thumb.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C6BDAC" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+        const fav = faviconFor(s.url);
+        if (fav) {
+          const img = document.createElement("img");
+          img.src = fav;
+          img.onerror = () => { img.style.display = "none"; };
+          thumb.appendChild(img);
+        } else {
+          thumb.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C6BDAC" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+        }
       }
       card.appendChild(thumb);
+
+      // サムネイルが古い(30日以上)か未取得なら、裏でこっそり更新しにいく
+      if (isThumbStale(s)) refreshThumb(s.id);
 
       const row = document.createElement("div");
       row.className = "card-row";
