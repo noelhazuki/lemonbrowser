@@ -92,10 +92,10 @@
   #searchBox {
     display: flex; align-items: center; gap: 8px; background: #fff;
     border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px;
-    flex: 1;
+    flex: 1; min-width: 0;
   }
   #searchBox input {
-    border: none; outline: none; background: transparent; flex: 1; font-size: 14px; color: var(--ink);
+    border: none; outline: none; background: transparent; flex: 1; min-width: 0; font-size: 14px; color: var(--ink);
   }
   #addSiteBtn {
     border: none; background: var(--accent); color: #fff; border-radius: 12px;
@@ -109,6 +109,11 @@
     display: flex; align-items: center; justify-content: center;
   }
   #reorderBtn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  #viewModeBtn {
+    border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 12px;
+    width: 42px; height: 42px; flex-shrink: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
   .card-move { display: flex; gap: 2px; flex-shrink: 0; }
   .card-move button {
     border: none; background: none; color: var(--muted-light); cursor: pointer; padding: 2px;
@@ -144,6 +149,26 @@
     border: none; background: none; color: var(--muted-light); cursor: pointer; padding: 2px; flex-shrink: 0;
   }
   #emptyMsg { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 13px; padding: 20px 0; display: none; }
+
+  /* ▼ 表示モード（1行表示／詳細表示） */
+  #grid.mode-list, #grid.mode-detail {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  #grid.mode-list .card, #grid.mode-detail .card {
+    flex-direction: row; align-items: center; gap: 10px;
+    padding: 8px 4px; border-bottom: 1px solid var(--line);
+  }
+  #grid.mode-list .card-thumb, #grid.mode-detail .card-thumb {
+    aspect-ratio: 1; width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  }
+  #grid.mode-list .card-thumb img, #grid.mode-detail .card-thumb img { width: 18px; height: 18px; }
+  #grid.mode-list .card-thumb.has-photo img, #grid.mode-detail .card-thumb.has-photo img { width: 100%; height: 100%; }
+  #grid.mode-list .card-row, #grid.mode-detail .card-row { flex: 1; min-width: 0; }
+  #grid.mode-list .card-body, #grid.mode-detail .card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .card-url {
+    font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* ▲ 表示モード（1行表示／詳細表示） */
 
   /* modal */
   #modalOverlay {
@@ -239,6 +264,7 @@
   <button id="reorderBtn" title="並び替え">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>
   </button>
+  <button id="viewModeBtn" title="表示切り替え"></button>
 </div>
 <div id="grid"></div>
 
@@ -629,6 +655,8 @@
     const grid = document.getElementById("grid");
     grid.innerHTML = "";
     const cat = getActive();
+    const mode = getViewMode(cat);
+    grid.className = mode === "thumb" ? "" : "mode-" + mode;
     const sites = (cat?.sites || []).filter(s =>
       query.trim() === "" ? true :
       s.title.toLowerCase().includes(query.toLowerCase()) || s.url.toLowerCase().includes(query.toLowerCase())
@@ -678,6 +706,9 @@
       // サムネイルが古い(30日以上)か未取得なら、裏でこっそり更新しにいく
       if (isThumbStale(s)) refreshThumb(s.id);
 
+      const body = document.createElement("div");
+      body.className = "card-body";
+
       const row = document.createElement("div");
       row.className = "card-row";
       const title = document.createElement("span");
@@ -711,7 +742,16 @@
         del.onclick = (e) => { e.preventDefault(); removeSite(s.id); };
         row.appendChild(del);
       }
-      card.appendChild(row);
+      body.appendChild(row);
+
+      if (mode === "detail") {
+        const urlLine = document.createElement("span");
+        urlLine.className = "card-url";
+        urlLine.textContent = s.url;
+        body.appendChild(urlLine);
+      }
+
+      card.appendChild(body);
 
       grid.appendChild(card);
     });
@@ -865,9 +905,40 @@
   });
   document.getElementById("groupModalClose").addEventListener("click", closeGroupModal);
 
+  // ▼ タブごとの表示モード（サムネイル/1行/詳細）
+  const VIEW_MODES = [
+    { key: "thumb", label: "サムネイル", icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
+    { key: "list", label: "1行表示", icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>' },
+    { key: "detail", label: "詳細表示", icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="10" x2="14" y2="10"/><line x1="4" y1="16" x2="20" y2="16"/><line x1="4" y1="20" x2="14" y2="20"/></svg>' },
+  ];
+
+  function getViewMode(cat) {
+    const found = VIEW_MODES.find(m => m.key === cat?.viewMode);
+    return found ? found.key : "thumb";
+  }
+
+  function renderViewModeBtn() {
+    const cat = getActive();
+    const mode = VIEW_MODES.find(m => m.key === getViewMode(cat));
+    const btn = document.getElementById("viewModeBtn");
+    btn.innerHTML = mode.icon;
+    btn.title = mode.label + "（タップで切替）";
+  }
+
+  document.getElementById("viewModeBtn").addEventListener("click", () => {
+    const cat = getActive();
+    if (!cat) return;
+    const idx = VIEW_MODES.findIndex(m => m.key === getViewMode(cat));
+    cat.viewMode = VIEW_MODES[(idx + 1) % VIEW_MODES.length].key;
+    save();
+    render();
+  });
+  // ▲ タブごとの表示モード（サムネイル/1行/詳細）
+
   function render() {
     renderTabs();
     renderGrid();
+    renderViewModeBtn();
   }
 
   render();
